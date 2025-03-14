@@ -1,0 +1,139 @@
+> radio b
+You switch your radio to configuration B (frequency 855, voice).
+> radio hail
+You initiate a transmission...
+"FD2 actual, this is Camp Dezrha Command. How can we help, Lieutenant Commander?"
+You are now in conversation.
+> airstrike point c
+You request an aistrike on your designated point C (-126, 135).
+"Is this a priority mission, Lieutenant Commander?"
+You will need to *persuade*.
+> push
+With your *persuade* skill of 5, you can push for 2d12.
+You roll (5, 10), and succeed!
+"Copy that, Lieutenant Commander. D5-A61 is en route; ETA 20 seconds."
+> radio out
+"Camp Dezrha Command, out."
+You are no longer in a conversation.
+
+
+> radio b
+You switch your radio to configuration B (frequency 855, voice).
+> radio hail
+You initiate a transmission...
+"FD2 ▒▒▒▒▒▒▒ ▒▒▒▒ is Camp ▒▒▒▒▒▒ Command. ▒▒▒ can ▒▒ ▒▒▒▒▒ Lieutenant Commander?"
+You are now in conversation.
+> airstrike point c
+You request an aistrike on your designated point C (-126, 135).
+"Is this ▒ ▒▒▒▒▒▒▒▒ mission, Lieutenant ▒▒▒▒▒▒▒▒▒▒"
+You will need to *persuade*. You have a penalty of 1 due to poor signal quality.
+> push
+With your *persuade* skill of 4, you can push for 2d10.
+You roll (3, 4), but fail...
+"Sorry, ▒▒▒▒ but we ▒▒▒▒▒ ▒▒▒▒▒ any air assets right ▒▒▒▒"
+
+> radio b
+You switch your radio to configuration B (frequency 855, voice).
+> radio hail
+You initiate a transmission...
+"Camp Dezrha Command receiving you, FD2; over."
+You are now in conversation.
+> airstrike point c
+Your request is interrupted.
+"Negative, Lieutenant Commander; that requires a secure channel."
+You can try to *persuade* or *disguise*.
+> cancel
+"Much appreciated, FD2."
+> radio c
+You switch your radio to configuration C (frequency 861, text, key [DF5HX6Y]).
+> radio hail
+"DZA TO FD2 RECEIVING"
+You are now in conversation.
+> airstrike point c
+You request an aistrike on your designated point C (-126, 135).
+"FD2 CONFIRM AUTHORIZATION"
+You will need to use *beuraucracy*.
+> rote
+With your *beureucracy* skill of 6, you can rote for 7.
+Your rote succeeds!
+"WILCO FD2. D5-A61 EN ROUTE. ETA 20S"
+> radio out
+"DZA CLOSING"
+You are no longer in a conversation.
+
+
+
+- Begin faction turn
+    Cell-target
+    Mask: Feedback (for Controllers)
+    Two entity types:
+        player_ctrl:
+            Find connection with entity ID, then post a feedback message
+        ai_ctrl
+            Respond immediately (if their turn)
+
+- Player command input: 'attack @1'
+    Target is the player_ctrl entity
+    Received by listen(['player_command'], ['player_ctrl'])
+    Command parser tree
+        No roll type defined
+        Send skill info as feedback
+        Store incomplete command in connection payload
+        event=(action_attack, <target id>, order_type=player_command, roll_type=undefined), waiting_for=roll_type
+
+- Player command input: 'push'
+    Target is player_ctrl
+    Command parser tree
+        Roll prefix with no action
+        Look up stored incomplete command:
+        Apply waiting_for, then send, then clear command buffer
+
+- action_attack, roll_type=push
+    Target is actor
+    Find equipped weapon
+        Check enough ammo etc.
+    Check available fatigue for skill
+    If not enough:
+        send action_cancel, reason=not_enough_points, event=(...), target=<actor ID>
+        received by listen(['action_cancel'], ['player_ctrl'])
+    Otherwise:
+        send fatigue, attribute=Drive, amount=1, target=<actor ID>
+        send weapon_attack, target=<weapon ID>, score, etc.
+
+- Fire weapon (target, score)
+    received by listen(['weapon_attack'], ['firearm']), also melee weapon etc.
+    Check enough ammo etc., on failure:
+        send action_cancel, reason=not_enough_ammo, event=(...), target=<actor ID from getRoot>
+    Actually do the calculation:
+        send notify, area=<distance around firing point>, sound_level=<calculated>, sight_level=<calculated> event=(weapon_attack, etc.)
+        Look at target cover, range, etc.
+        Roll target defence dice,
+        Check if it hits, crits, etc.
+        send receive_attack, target=<target actor>, dice=number[], base damage, pen damage
+
+- notify
+    received by listen(['notify'], ['player_ctrl']), also ai_ctrl
+    Check:
+        is the source me? if so, ignore.
+        Otherwise: 'you hear gunfire close by...' etc.
+
+- Receive attack (source, target, dice[], base, penetration)
+    received by listen(['receive_attack'], ['actor'])
+        calculate final amount based on armor, thresholds...
+        send: wound level=wound, crippled, incapacitated etc.
+    received by listen(['receive_attack'], ['player_ctrl'])
+        feedback: "A bullet smashes into your shoulder."
+
+- Wound (level, reason)
+    received by listen(['wound'], ['player_ctrl'])
+        send feedback: "You are *crippled* by the gunshot."
+    received by listen(['wound'], ['actor'])
+        Update wound state
+        send: damage, target=<self>, amount=<calculated amount>
+
+- Damage (attribute, amount)
+    received by listen(['damage'], ['actor'])
+        change values
+    received by listen(['damage'], ['player_ctrl'])
+        send feedback: "
+

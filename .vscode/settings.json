@@ -1,0 +1,10 @@
+{
+	"search.exclude": {
+		"**/.yarn": true,
+		"**/.pnp.*": true
+	},
+	"typescript.enablePromptUseWorkspaceTsdk": true,
+	"editor.formatOnSave": true,
+	"typescript.tsdk": ".yarn/sdks/typescript/lib",
+	"editor.tabSize": 2
+}

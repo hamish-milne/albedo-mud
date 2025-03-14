@@ -1,0 +1,25 @@
+{
+  "packageManager": "yarn@4.7.0",
+  "type": "module",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "tsc --watch & nodemon -e ts -x './run-ts.ps1 .' -w './src'"
+  },
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.17.24",
+    "ase-parser": "^0.0.18",
+    "better-sqlite3": "^11.9.0",
+    "gl-matrix": "^3.4.3",
+    "nodemon": "^3.1.9",
+    "pino": "^9.6.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@yarnpkg/sdks": "^3.2.1",
+    "pino-pretty": "^13.0.0"
+  }
+}

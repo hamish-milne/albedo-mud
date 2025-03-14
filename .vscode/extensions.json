@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "arcanis.vscode-zipfs",
+    "vitest.explorer",
+    "biomejs.biome"
+  ]
+}
