@@ -4,8 +4,7 @@ import { DB } from "./db.js";
 import { drawMap } from "./tiles.js";
 import { glMatrix, vec2 } from "gl-matrix";
 import { exit, stdin, stdout } from "node:process";
-import { clearScreen, clearTerminal, eraseScreen } from "ansi-escapes";
-import ansiStyles from "ansi-styles";
+import { Terminal } from "./terminal.js";
 
 // const db = new DB();
 
@@ -21,33 +20,30 @@ const cel = aseFile.frames[0].cels[0];
 //   data: cel.rawCelData,
 // });
 
-// terminal.color(1)("test!\n");
-
 glMatrix.setMatrixArrayType(Array);
 
 const pos: vec2 = [12, 11];
 
+const terminal = new Terminal(stdout);
+
 function paint() {
-  // console.log("painting");
-  const sbuf = [clearScreen];
+  terminal.cls();
   drawMap(
     {
       width: cel.w,
       data: cel.rawCelData,
     },
     pos,
-    sbuf,
+    terminal,
   );
-  stdout.write(sbuf.join(""));
-  console.log(Buffer.from(ansiStyles.green.open));
-  console.log(Buffer.from(ansiStyles.color.ansi(32)));
+  terminal.flush();
 }
 
 stdin.setRawMode(true);
 while (true) {
   const key = stdin.read(1);
   if (key) {
-    stdin.read(1000);
+    stdin.read();
     switch (String.fromCharCode(key[0])) {
       case "w":
         vec2.add(pos, pos, [-1, 0]);
@@ -62,6 +58,18 @@ while (true) {
         vec2.add(pos, pos, [0, 1]);
         break;
       case "q":
+        vec2.add(pos, pos, [-1, -1]);
+        break;
+      case "e":
+        vec2.add(pos, pos, [-1, 1]);
+        break;
+      case "z":
+        vec2.add(pos, pos, [1, -1]);
+        break;
+      case "c":
+        vec2.add(pos, pos, [1, 1]);
+        break;
+      case "p":
         exit(0);
     }
     paint();

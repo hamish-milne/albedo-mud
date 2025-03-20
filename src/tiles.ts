@@ -1,85 +1,27 @@
 import { vec2 } from "gl-matrix";
 import type { Vec2 } from "./types.js";
-import ansiStyles from "ansi-styles";
+import { Color, Style, type Terminal } from "./terminal.js";
 
-export enum TerminalColor {
-  Black = 0,
-  Red = 1,
-  Green = 2,
-  Yellow = 3,
-  Blue = 4,
-  Magenta = 5,
-  Cyan = 6,
-  LightGray = 7,
-  Gray = 8,
-  LightRed = 9,
-  LightGreen = 10,
-  LightYellow = 11,
-  LightBlue = 12,
-  LightMagenta = 13,
-  LightCyan = 14,
-  White = 15,
-}
-
-export function lighten(color: TerminalColor): TerminalColor {
-  switch (color) {
-    case TerminalColor.Black:
-      return color;
-    case TerminalColor.Gray:
-      return TerminalColor.LightGray;
-    case TerminalColor.LightGray:
-      return TerminalColor.White;
-    default:
-      if (color >= 8) {
-        return color;
-      }
-      return color + 8;
-  }
-}
-
-export function darken(color: TerminalColor) {
-  switch (color) {
-    case TerminalColor.LightGray:
-      return TerminalColor.Gray;
-    case TerminalColor.Gray:
-      return color;
-    default:
-      if (color < 8) {
-        return color;
-      }
-      return color - 8;
-  }
-}
-
-export function drawMap(map: MapSegment, los: vec2, sbuf: string[]) {
+export function drawMap(map: MapSegment, los: vec2, t: Terminal) {
   for (let y = 0; y < map.data.length / map.width; y++) {
     for (let x = 0; x < map.width; x++) {
-      if (vec2.exactEquals([y, x], los)) {
-        sbuf.push(ansiStyles.bgBlack.open, ansiStyles.color.ansi(31), "&");
+      const p: vec2 = [y, x];
+      if (vec2.exactEquals(p, los)) {
+        t.fg(Color.red).bg(Color.black).write("&");
         continue;
       }
-      const { char, fg, bg } = tileAt(map, [y, x]);
-      const { concealment } = linecast(
-        map,
-        los,
-        [y, x],
-        LinecastOptions.IncludeEnd,
-      );
+      const { char, fg, bg } = tileAt(map, p);
+      const { concealment } = linecast(map, los, p, LinecastOptions.None);
+
+      t.bg(bg).fg(fg);
       if (concealment < 4) {
-        sbuf.push(
-          ansiStyles.green.open,
-          ansiStyles.bgBlack.open,
-          String.fromCharCode(char),
-        );
+        t.styles(Style.fgLight);
       } else {
-        sbuf.push(
-          ansiStyles.color.ansi(32),
-          ansiStyles.bgGray.open,
-          String.fromCodePoint(char),
-        );
+        t.styles(Style.none);
       }
+      t.write(String.fromCharCode(char));
     }
-    sbuf.push(ansiStyles.reset.open, "\n");
+    t.reset().write("\n");
   }
 }
 
@@ -89,8 +31,8 @@ export interface TileInfo {
   concealment: 0 | 1 | 2 | 3 | 4;
   solid?: boolean;
   char: number;
-  fg: TerminalColor;
-  bg: TerminalColor;
+  fg: Color;
+  bg: Color;
 }
 
 export const Tiles: TileInfo[] = [
@@ -99,8 +41,8 @@ export const Tiles: TileInfo[] = [
     cover: 0,
     concealment: 0,
     char: ".".charCodeAt(0),
-    fg: TerminalColor.Yellow,
-    bg: TerminalColor.Black,
+    fg: Color.yellow,
+    bg: Color.black,
   },
   {
     name: "Wall",
@@ -108,32 +50,32 @@ export const Tiles: TileInfo[] = [
     concealment: 4,
     solid: true,
     char: "#".charCodeAt(0),
-    fg: TerminalColor.Black,
-    bg: TerminalColor.Gray,
+    fg: Color.black,
+    bg: Color.white,
   },
   {
     name: "Grass",
     cover: 0,
     concealment: 0,
     char: "w".charCodeAt(0),
-    fg: TerminalColor.Green,
-    bg: TerminalColor.Black,
+    fg: Color.green,
+    bg: Color.black,
   },
   {
     name: "Brush",
     cover: 1,
     concealment: 2,
     char: 0x2ac,
-    fg: TerminalColor.Green,
-    bg: TerminalColor.Black,
+    fg: Color.green,
+    bg: Color.black,
   },
   {
     name: "Rubble",
     cover: 1,
     concealment: 1,
     char: ";".charCodeAt(0),
-    fg: TerminalColor.Gray,
-    bg: TerminalColor.Black,
+    fg: Color.white,
+    bg: Color.black,
   },
 ];
 
@@ -161,7 +103,6 @@ export function linecast(
   to: vec2,
   options = LinecastOptions.None,
 ) {
-  // console.log(`LINECAST TO ${vec2.str(to)}`);
   const result: LinecastInfo = {
     cover: 0,
     concealment: 0,
@@ -202,20 +143,19 @@ export function linecast(
   }
 
   while (!vec2.exactEquals(current, to)) {
-    // console.log(vec2.str(current));
     const ay = candidateDistance(vec2.add(cy, dy, current));
     const ax = candidateDistance(vec2.add(cx, dx, current));
-    if (vec2.exactEquals(cy, to) || vec2.exactEquals(cx, to)) {
-      break;
-    }
     if (ay === ax) {
       // exact 45-degree angle
-      append(cy);
-      append(cx);
       vec2.add(current, vec2.add(current, current, dy), dx);
     } else {
       vec2.copy(current, ay < ax ? cy : cx);
+    }
+    if (!vec2.exactEquals(current, to)) {
       append(current);
+    }
+    if (result.concealment >= 4 || result.cover >= 4) {
+      return result;
     }
   }
   if ((options & LinecastOptions.IncludeEnd) !== 0) {
