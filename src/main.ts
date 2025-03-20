@@ -2,10 +2,10 @@ import Aseprite from "ase-parser";
 import { readFileSync } from "node:fs";
 import { DB } from "./db.js";
 import { drawMap } from "./tiles.js";
-import { default as tkit } from "terminal-kit";
 import { glMatrix, vec2 } from "gl-matrix";
-import { stdin } from "node:process";
-const { terminal, createTerminal } = tkit;
+import { exit, stdin, stdout } from "node:process";
+import { clearScreen, clearTerminal, eraseScreen } from "ansi-escapes";
+import ansiStyles from "ansi-styles";
 
 // const db = new DB();
 
@@ -28,15 +28,19 @@ glMatrix.setMatrixArrayType(Array);
 const pos: vec2 = [12, 11];
 
 function paint() {
-  terminal.reset();
+  // console.log("painting");
+  const sbuf = [clearScreen];
   drawMap(
     {
       width: cel.w,
       data: cel.rawCelData,
     },
     pos,
-    terminal,
+    sbuf,
   );
+  stdout.write(sbuf.join(""));
+  console.log(Buffer.from(ansiStyles.green.open));
+  console.log(Buffer.from(ansiStyles.color.ansi(32)));
 }
 
 stdin.setRawMode(true);
@@ -57,6 +61,8 @@ while (true) {
       case "d":
         vec2.add(pos, pos, [0, 1]);
         break;
+      case "q":
+        exit(0);
     }
     paint();
   }

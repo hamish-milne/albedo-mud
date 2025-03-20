@@ -9,6 +9,8 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.17.24",
     "@types/terminal-kit": "^2.5.7",
+    "ansi-escapes": "^7.0.0",
+    "ansi-styles": "^6.2.1",
     "ase-parser": "^0.0.18",
     "better-sqlite3": "^11.9.0",
     "gl-matrix": "^3.4.3",

@@ -1,6 +1,6 @@
 import { vec2 } from "gl-matrix";
 import type { Vec2 } from "./types.js";
-import type { Terminal } from "terminal-kit";
+import ansiStyles from "ansi-styles";
 
 export enum TerminalColor {
   Black = 0,
@@ -51,11 +51,11 @@ export function darken(color: TerminalColor) {
   }
 }
 
-export function drawMap(map: MapSegment, los: vec2, terminal: Terminal) {
+export function drawMap(map: MapSegment, los: vec2, sbuf: string[]) {
   for (let y = 0; y < map.data.length / map.width; y++) {
     for (let x = 0; x < map.width; x++) {
       if (vec2.exactEquals([y, x], los)) {
-        terminal.red("&");
+        sbuf.push(ansiStyles.bgBlack.open, ansiStyles.color.ansi(31), "&");
         continue;
       }
       const { char, fg, bg } = tileAt(map, [y, x]);
@@ -66,14 +66,20 @@ export function drawMap(map: MapSegment, los: vec2, terminal: Terminal) {
         LinecastOptions.IncludeEnd,
       );
       if (concealment < 4) {
-        terminal.color(lighten(fg)).bgColor(lighten(bg))(
-          String.fromCodePoint(char),
+        sbuf.push(
+          ansiStyles.green.open,
+          ansiStyles.bgBlack.open,
+          String.fromCharCode(char),
         );
       } else {
-        terminal.color(fg).bgColor(bg)(String.fromCodePoint(char));
+        sbuf.push(
+          ansiStyles.color.ansi(32),
+          ansiStyles.bgGray.open,
+          String.fromCodePoint(char),
+        );
       }
     }
-    terminal.styleReset("\n");
+    sbuf.push(ansiStyles.reset.open, "\n");
   }
 }
 
