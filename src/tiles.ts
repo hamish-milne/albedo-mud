@@ -1,4 +1,4 @@
-import { vec2 } from "gl-matrix";
+import { vec2, type ReadonlyVec2 } from "gl-matrix";
 import type { Vec2 } from "./types.js";
 import { Color, Style, type Terminal } from "./terminal.js";
 
@@ -84,13 +84,13 @@ export interface MapSegment {
   width: number;
 }
 
-function tileAt(map: MapSegment, pos: vec2): TileInfo {
+function tileAt(map: MapSegment, pos: ReadonlyVec2): TileInfo {
   return Tiles[map.data[pos[0] * map.width + pos[1]]];
 }
 
 export type LinecastInfo = Pick<TileInfo, "cover" | "concealment" | "solid">;
 
-enum LinecastOptions {
+export enum LinecastOptions {
   None = 0,
   IncludeStart = 1 << 0,
   IncludeEnd = 1 << 1,
@@ -99,8 +99,8 @@ enum LinecastOptions {
 
 export function linecast(
   map: MapSegment,
-  from: vec2,
-  to: vec2,
+  from: ReadonlyVec2,
+  to: ReadonlyVec2,
   options = LinecastOptions.None,
 ) {
   const result: LinecastInfo = {
@@ -109,7 +109,7 @@ export function linecast(
     solid: undefined,
   };
 
-  function append(p: vec2) {
+  function append(p: ReadonlyVec2) {
     const tile = tileAt(map, p);
     if (!tile) {
       return;

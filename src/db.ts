@@ -134,9 +134,12 @@ SELECT json_group_array(json_object(
 
 interface Child {
   parent: number;
+  map?: undefined;
+  position?: undefined;
 }
 
 interface Root {
+  parent?: undefined;
   map: number;
   position: [number, number];
 }
@@ -250,13 +253,16 @@ function createDb() {
 export class DB {
   constructor(
     private _db = createDb(),
-    private _setEntityPayload = this._db.prepare<[number, string], never>(
+    private _getEntity = this._db.prepare<[EntityId], [string]>(
+      entityQuery("id=?"),
+    ),
+    private _setEntityPayload = this._db.prepare<[EntityId, string], never>(
       "UPDATE Entity SET payload=jsonb(?2) WHERE id=?1",
     ),
-    private _patchEntityPayload = this._db.prepare<[number, string], never>(
+    private _patchEntityPayload = this._db.prepare<[EntityId, string], never>(
       "UPDATE Entity SET payload=jsonb_patch(coalesce(payload, '{}'), ?2) WHERE id=?1",
     ),
-    private _setEntityParent = this._db.prepare<[number, number], never>(
+    private _setEntityParent = this._db.prepare<[EntityId, number], never>(
       "UPDATE Entity SET parent=?2,tile=NULL WHERE id=?1",
     ),
     private _setEntityPosition = this._db.prepare<
@@ -504,5 +510,14 @@ export class DB {
         insertRow.run(...rowArgs);
       }
     });
+  }
+
+  getEntity(id: EntityId) {
+    const row = this._getEntity.get(id);
+    if (!row) {
+      return undefined;
+    }
+    const found: ReadEntity[] = JSON.parse(row[0]);
+    return found[0];
   }
 }

@@ -1,7 +1,14 @@
 import { vec2 } from "gl-matrix";
-import { listen } from "../app.js";
-import type { ReadRootEntity, WriteEvent } from "../db.js";
-import { EventMask, type EventId, type Vec2 } from "../types.js";
+import { listen, playerListen } from "../app.js";
+import type {
+  DB,
+  ReadEntity,
+  ReadEvent,
+  ReadRootEntity,
+  WriteEvent,
+} from "../db.js";
+import { EventMask, type EntityId, type EventId, type Vec2 } from "../types.js";
+import { linecast, LinecastOptions } from "../tiles.js";
 
 const RangeNames = ["C", "S", "M", "L", "X"] as const;
 type Range = (typeof RangeNames)[number];
@@ -153,15 +160,16 @@ declare global {
   }
   interface EventPayloads {
     weapon_attack: {
-      target: EventId;
+      target: EntityId;
       score: number;
     };
     action_cancel: {
       event: WriteEvent;
-      reason: "ammo";
+      reason: "ammo" | "invalid";
     };
     notify: {
       event: WriteEvent;
+      root: EntityId;
     };
   }
 }
@@ -180,32 +188,91 @@ function getTargetRange(
   }
 }
 
+function cancel(
+  db: DB,
+  event: ReadEvent,
+  root: ReadRootEntity,
+  reason: EventPayloads["action_cancel"]["reason"],
+) {
+  db.insertTargetEvent({
+    type: "action_cancel",
+    payload: {
+      event,
+      reason,
+    },
+    mask: EventMask.ActionResult,
+    target: root.id,
+  });
+}
+
+function notify(
+  db: DB,
+  event: ReadEvent,
+  root: ReadRootEntity,
+  range: number,
+  center?: Vec2,
+) {
+  db.insertAreaEvent({
+    type: "notify",
+    payload: {
+      event,
+      root: root.id,
+    },
+    mask: EventMask.Listen | EventMask.See,
+    map: root.map,
+    center: center || root.position,
+    range,
+  });
+}
+
 listen(["weapon_attack"], ["firearm"], function (event, entity, root) {
+  const attackTarget = this.getEntity(event.payload.target);
+  if (!attackTarget || !attackTarget.position) {
+    return cancel(this, event, root, "invalid");
+  }
   const mag = this.children(entity.id, "ammo")?.[0];
   if (!mag || mag.payload.count < 1) {
-    this.insertTargetEvent({
-      type: "action_cancel",
-      payload: {
-        event: event,
-        reason: "ammo",
-      },
-      mask: EventMask.ActionResult,
-      target: root.id,
-    });
-    return;
+    return cancel(this, event, root, "ammo");
   }
   const model = FirearmModels[entity.payload.model];
   this.patchEntityPayload(mag.id, {
     count: mag.payload.count - 1,
   });
-  this.insertAreaEvent({
-    type: "notify",
-    payload: {
-      event: event,
-    },
-    mask: EventMask.Listen | EventMask.See,
-    map: root.map,
-    center: root.position,
-    range: model.ranges.X,
-  });
+  notify(this, event, root, model.ranges.X);
+  const segment = this.getMapSegment(
+    root.map,
+    vec2.min(vec2.create(), root.position, attackTarget.position),
+    vec2.max(vec2.create(), root.position, attackTarget.position),
+  );
+  const result = linecast(
+    segment,
+    root.position,
+    attackTarget.position,
+    LinecastOptions.IncludeEnd,
+  );
+});
+
+playerListen(["notify"], ["player_ctrl"], function (event, entity, root, conn) {
+  const { event: sourceEvent, root: sourceRoot } = event.payload;
+  if (sourceRoot === root.id) {
+    return; // Event came from this actor; ignore it.
+  }
+  if (!event.center) {
+    return; // 'notify' should always be an area event (?)
+  }
+  const distance = vec2.dist(event.center, root.position);
+  const relDistance = distance / event.range;
+  switch (sourceEvent.type) {
+    case "weapon_attack":
+      if (relDistance < 0.1) {
+        conn.message("You hear gunfire very close by!");
+      } else if (relDistance < 0.2) {
+        conn.message("You hear gunfire nearby.");
+      } else if (relDistance < 0.5) {
+        conn.message("You hear gunfire a short distance away.");
+      } else {
+        conn.message("You hear gunfire in the distance.");
+      }
+      break;
+  }
 });

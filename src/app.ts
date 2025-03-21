@@ -43,9 +43,10 @@ export function playerListen<
   events: TEvent[],
   entities: TEntity[],
   handler: (
+    this: DB,
     event: ReadEvent<TEvent>,
     entity: ReadEntity<TEntity>,
-    context: Context,
+    root: ReadRootEntity,
     conn: Connection,
   ) => void,
 ) {}
