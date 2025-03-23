@@ -10,6 +10,7 @@ export type EntityType = keyof EntityPayloads;
 
 export type EntityId = number;
 export type EventId = number;
+export type CellId = number;
 
 export type Vec2 = [number, number];
 
