@@ -1,6 +1,5 @@
-import { playerListen, listen, getConnection } from "../app.js";
-import type { DB, ReadEntity } from "../db.js";
-import { EventMask } from "../types.js";
+import { listen, getConnection } from "../app.js";
+import type { Entity } from "../entity.js";
 
 export type Attribute = "Body" | "Drive" | "Clout";
 
@@ -167,8 +166,7 @@ function pointsToDice(skill: number, count: number) {
 }
 
 export function trySkillRoll(
-  db: DB,
-  actor: ReadEntity<"actor">,
+  actor: Entity<"actor">,
   skill: Skill,
   rollType: "rote" | "roll" | "push" | "risk" | "breeze",
   stunt: boolean,
@@ -215,14 +213,12 @@ export function trySkillRoll(
   if (fatigueCost && fatigueCost > base - damage - fatigue) {
     return "notEnoughFatigue";
   }
-  db.insertTargetEvent({
+  actor.post({
     type: "fatigue",
     payload: {
       attribute,
       amount: fatigueCost,
     },
-    target: actor.id,
-    mask: EventMask.Damage,
   });
   return dice;
 }
@@ -230,7 +226,7 @@ export function trySkillRoll(
 listen(["damage"], ["actor"], function (event, entity) {
   const { attribute, amount } = event.payload;
   const { base, damage } = entity.payload[attribute];
-  this.patchEntityPayload(entity.id, {
+  entity.patch({
     [attribute]: {
       damage: Math.min(damage + amount, base),
     },
@@ -240,7 +236,7 @@ listen(["damage"], ["actor"], function (event, entity) {
 listen(["fatigue"], ["actor"], function (event, entity) {
   const { attribute, amount } = event.payload;
   const { base, damage, fatigue } = entity.payload[attribute];
-  this.patchEntityPayload(entity.id, {
+  entity.patch({
     [attribute]: {
       fatigue: Math.min(fatigue + amount, base - damage),
     },
@@ -248,7 +244,7 @@ listen(["fatigue"], ["actor"], function (event, entity) {
 });
 
 listen(["damage", "fatigue"], ["player_ctrl"], function (event, entity) {
-  const conn = getConnection(entity);
+  const conn = getConnection(entity.id);
   if (!conn) {
     return;
   }

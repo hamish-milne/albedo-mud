@@ -1,14 +1,9 @@
 import { vec2, type ReadonlyVec2 } from "gl-matrix";
 import { getConnection, listen } from "../app.js";
-import type {
-  DB,
-  ReadEntity,
-  ReadEvent,
-  ReadRootEntity,
-  WriteEvent,
-} from "../db.js";
-import { EventMask, type EntityId, type EventId, type Vec2 } from "../types.js";
+import type { DB, ReadEvent, ReadRootEntity, WriteEvent } from "../db.js";
+import type { EntityId, Vec2 } from "../types.js";
 import { linecast, LinecastOptions } from "../tiles.js";
+import { RootEntity } from "../entity.js";
 
 const RangeNames = ["C", "S", "M", "L", "X"] as const;
 type Range = (typeof RangeNames)[number];
@@ -189,19 +184,13 @@ function getTargetRange(
 }
 
 function cancel(
-  db: DB,
   event: ReadEvent,
-  root: ReadRootEntity,
+  root: RootEntity,
   reason: EventPayloads["action_cancel"]["reason"],
 ) {
-  db.insertTargetEvent({
+  root.post({
     type: "action_cancel",
-    payload: {
-      event,
-      reason,
-    },
-    mask: EventMask.ActionResult,
-    target: root.id,
+    payload: { event, reason },
   });
 }
 
@@ -218,7 +207,6 @@ function notify(
       event,
       root: root.id,
     },
-    mask: EventMask.Listen | EventMask.See,
     map: root.map,
     center: center || root.position,
     range,
@@ -232,22 +220,21 @@ function doWeaponAttack(
 ) {}
 
 listen(["weapon_attack"], ["firearm"], function (event, entity) {
-  const root = this.getRoot(entity);
+  const root = entity.getRoot();
   const model = FirearmModels[entity.payload.model];
-  const attackTarget = this.getEntity(event.payload.target);
-  if (!model || !attackTarget || !attackTarget.position) {
-    return cancel(this, event, root, "invalid");
+  const attackTarget = this.byId(event.payload.target);
+  if (!model || !(attackTarget instanceof RootEntity)) {
+    return cancel(event, root, "invalid");
   }
-  const mag = this.children(entity.id, "ammo")?.[0];
+  const mag = entity.children("ammo")[0];
   if (!mag || mag.payload.count < 1) {
-    return cancel(this, event, root, "ammo");
+    return cancel(event, root, "ammo");
   }
   const range = getTargetRange(root.position, model, attackTarget.position);
   if (!range) {
-    return cancel(this, event, root, "range");
+    return cancel(event, root, "range");
   }
   const segment = this.getMapSegment(
-    root.map,
     vec2.min(vec2.create(), root.position, attackTarget.position),
     vec2.max(vec2.create(), root.position, attackTarget.position),
   );
@@ -258,16 +245,17 @@ listen(["weapon_attack"], ["firearm"], function (event, entity) {
     LinecastOptions.IncludeEnd,
   );
   if (result.cover >= 4) {
-    return cancel(this, event, root, "los");
+    return cancel(event, root, "los");
   }
-  this.patchEntityPayload(mag.id, {
-    count: mag.payload.count - 1,
+  mag.patch({ count: mag.payload.count - 1 });
+  root.ping(model.ranges.X, {
+    type: "notify",
+    payload: { event, root: root.id },
   });
-  notify(this, event, root, model.ranges.X);
 });
 
 listen(["notify"], ["player_ctrl"], function (event, entity) {
-  const root = this.getRoot(entity);
+  const root = entity.getRoot();
   const { event: sourceEvent, root: sourceRoot } = event.payload;
   if (sourceRoot === root.id) {
     return; // Event came from this actor; ignore it.
@@ -275,7 +263,7 @@ listen(["notify"], ["player_ctrl"], function (event, entity) {
   if (!event.center) {
     return; // 'notify' should always be an area event (?)
   }
-  const conn = getConnection(entity);
+  const conn = getConnection(entity.id);
   if (!conn) {
     return;
   }

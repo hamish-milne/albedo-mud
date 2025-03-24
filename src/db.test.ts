@@ -1,10 +1,8 @@
 import { expect, test } from "vitest";
 import { DB, type WriteChildEntity, type WriteRootEntity } from "./db.js";
-import { EventMask } from "./types.js";
 
 const firearm = {
   type: "firearm",
-  mask: EventMask.ActionResult,
   payload: {
     model: "edf_dmr",
   },
@@ -12,7 +10,6 @@ const firearm = {
 
 const actor = {
   type: "actor",
-  mask: EventMask.See,
   payload: {
     Body: { base: 0, fatigue: 0, damage: 0 },
     Clout: { base: 0, fatigue: 0, damage: 0 },
@@ -26,7 +23,6 @@ const ammo = {
     caliber: "10mm",
     count: 123,
   },
-  mask: EventMask.ActionResult,
 } as const;
 
 const position = {
@@ -143,7 +139,6 @@ test("write/read events", () => {
     map: 1,
     center: [3, 4],
     range: 1,
-    mask: actor.mask,
   } as const;
   db.insertAreaEvent(areaEvent);
   const targetEvent = {
@@ -152,7 +147,6 @@ test("write/read events", () => {
       score: 9,
       target: 7,
     },
-    mask: actor.mask,
     target: id,
   } as const;
   db.insertTargetEvent(targetEvent);

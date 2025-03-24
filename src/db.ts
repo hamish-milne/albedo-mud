@@ -4,11 +4,13 @@ import type {
   DeepPartial,
   EntityId,
   EntityType,
-  EventMask,
   EventType,
+  MapId,
+  Vec2,
 } from "./types.js";
 import { vec2, type ReadonlyVec2 } from "gl-matrix";
 import type { MapSegment } from "./tiles.js";
+import { entityMasks, eventMasks, type EventMask } from "./mask.js";
 
 const init = `
 CREATE TABLE IF NOT EXISTS Event(
@@ -26,7 +28,6 @@ CREATE TABLE IF NOT EXISTS Event(
     object BLOB GENERATED ALWAYS AS (json_object(
         'id', id,
         'type', etype,
-        'mask', mask,
         'map', map,
         'center', if(center IS NULL, NULL, jsonb_array(y,x)),
         'range', range,
@@ -89,7 +90,6 @@ function entityQuery(filter: string, prefix?: string, table?: string) {
   return `${prefix || ""} SELECT json_group_array(json_object(
 	'id', id,
 	'type', etype,
-	'mask', mask,
 	'payload', jsonb(payload),
 	'parent', parent,
 	'cell', cell,
@@ -136,7 +136,6 @@ Tree AS (
 SELECT json_group_array(json_object(
 	'id', id,
 	'type', etype,
-	'mask', mask,
 	'payload', jsonb(payload),
 	'parent', parent,
 	'cell', cell,
@@ -154,24 +153,23 @@ interface Child {
 
 interface Root {
   parent?: undefined;
-  map: number;
-  position: [number, number];
+  map: MapId;
+  position: Vec2;
   cell?: CellId | null;
 }
 
 interface Read {
-  id: number;
+  id: EntityId;
 }
 
 type BaseEntityMap = {
   [T in EntityType]: {
     type: T;
     payload: EntityPayloads[T];
-    mask: EventMask;
   };
 };
 
-type BaseEntity<T extends EntityType> = BaseEntityMap[T];
+export type BaseEntity<T extends EntityType> = BaseEntityMap[T];
 
 type Const<T> = T extends string | number | boolean | null | undefined | bigint
   ? T
@@ -193,17 +191,14 @@ export type ReadEntity<T extends EntityType = EntityType> = Const<
   BaseEntity<T> & Read & (Root | Child)
 >;
 
-export type WriteChildEntity<T extends EntityType = EntityType> = Const<
-  BaseEntity<T> & Child
->;
+export type WriteChildEntity<T extends EntityType = EntityType> =
+  BaseEntity<T> & Child;
 
-export type WriteRootEntity<T extends EntityType = EntityType> = Const<
-  BaseEntity<T> & Root
->;
+export type WriteRootEntity<T extends EntityType = EntityType> = BaseEntity<T> &
+  Root;
 
-export type WriteEntity<T extends EntityType = EntityType> = Const<
-  BaseEntity<T> & (Root | Child)
->;
+export type WriteEntity<T extends EntityType = EntityType> = BaseEntity<T> &
+  (Root | Child);
 
 export type EntityTree<T extends EntityType = EntityType> =
   ReadChildEntity<T> & {
@@ -211,8 +206,8 @@ export type EntityTree<T extends EntityType = EntityType> =
   };
 
 interface AreaEvent {
-  map: number;
-  center: [number, number];
+  map: MapId;
+  center: Vec2;
   range: number;
   cell?: undefined;
   target?: undefined;
@@ -240,11 +235,10 @@ type BaseEventMap = {
   [T in EventType]: {
     type: T;
     payload: EventPayloads[T];
-    mask: EventMask;
   };
 };
 
-type BaseEvent<T extends EventType> = BaseEventMap[T];
+export type BaseEvent<T extends EventType> = BaseEventMap[T];
 
 type ReadAreaEvent<T extends EventType = EventType> = Const<
   BaseEvent<T> & AreaEvent & Read
@@ -259,18 +253,14 @@ export type ReadEvent<T extends EventType = EventType> = Const<
   BaseEvent<T> & EventSelector & Read
 >;
 
-type WriteAreaEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & AreaEvent
->;
-type WriteCellEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & CellEvent
->;
-type WriteTargetEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & TargetEvent
->;
-export type WriteEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & EventSelector
->;
+export type WriteAreaEvent<T extends EventType = EventType> = BaseEvent<T> &
+  AreaEvent;
+export type WriteCellEvent<T extends EventType = EventType> = BaseEvent<T> &
+  CellEvent;
+export type WriteTargetEvent<T extends EventType = EventType> = BaseEvent<T> &
+  TargetEvent;
+export type WriteEvent<T extends EventType = EventType> = BaseEvent<T> &
+  EventSelector;
 
 function createDb() {
   const db = new Database(":memory:");
@@ -323,7 +313,7 @@ export class DB {
       "UPDATE Entity SET parent=?,tile=NULL,cell=NULL WHERE id=?",
     ),
     private _setEntityPosition = _db.prepare<
-      { map: number; y: number; x: number; id: EntityId },
+      { map: MapId; y: number; x: number; id: EntityId },
       never
     >(
       "UPDATE Entity SET tile=(($map<<32)|($y<<16)|$x),parent=NULL WHERE id=$id",
@@ -341,7 +331,7 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
       .raw(true),
     private _getTilesByPosition = _db
       .prepare<
-        { map: number; y1: number; y2: number; x1: number; x2: number },
+        { map: MapId; y1: number; y2: number; x1: number; x2: number },
         [number, number, number]
       >(
         "SELECT y,x,ttype FROM Tile WHERE map=$map AND y>=$y1 AND y<=$y2 AND x>=$x1 AND x<=$x2",
@@ -358,7 +348,7 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
       .raw(true),
     private _getAreaEventListeners = _db
       .prepare<
-        { map: number; y: number; x: number; range: number; mask: EventMask },
+        { map: MapId; y: number; x: number; range: number; mask: EventMask },
         [string]
       >(
         entityHierarchyQuery(
@@ -423,30 +413,30 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
   ) {}
 
   setEntityPayload<TEntity extends keyof EntityPayloads>(
-    id: number,
+    id: EntityId,
     payload: EntityPayloads[TEntity],
   ) {
     this._setEntityPayload.run(jsonStringOrNull(payload), id);
   }
 
   patchEntityPayload<TEntity extends EntityType>(
-    id: number,
+    id: EntityId,
     payload: DeepPartial<EntityPayloads[TEntity]>,
   ) {
     this._patchEntityPayload.run(JSON.stringify(payload), id);
   }
 
-  setEntityParent(id: number, parent: number) {
+  setEntityParent(id: EntityId, parent: EntityId) {
     this._setEntityParent.run(id, parent);
   }
 
-  setEntityPosition(id: number, map: number, position: ReadonlyVec2) {
+  setEntityPosition(id: EntityId, map: MapId, position: ReadonlyVec2) {
     this._setEntityPosition.run({ id, map, y: position[0], x: position[1] });
   }
 
-  getHierarchy(id: number) {
+  getHierarchy(id: EntityId) {
     const entities: ReadChildEntity[] = jsonQuery(this._getHierarchy, id) || [];
-    function makeTree(parent: number) {
+    function makeTree(parent: EntityId) {
       const list: EntityTree[] = [];
       for (const e of entities) {
         if (e.parent === parent) {
@@ -461,11 +451,12 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     return makeTree(id);
   }
 
-  getNextEvent(map: number): [ReadEvent, ReadEntity[]] | undefined {
+  getNextEvent(map: MapId): [ReadEvent, ReadEntity[]] | undefined {
     const event: ReadEvent | undefined = jsonQuery(this._getNextEvent, map);
     if (!event) {
       return;
     }
+    const mask = eventMasks[event.type];
     let entities: ReadEntity[] | undefined = undefined;
     if (event.center) {
       entities = jsonQuery(this._getAreaEventListeners, {
@@ -473,16 +464,12 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
         y: event.center[0],
         x: event.center[1],
         range: event.range,
-        mask: event.mask,
+        mask,
       });
     } else if (event.cell) {
-      entities = jsonQuery(this._getCellEventListeners, event.cell, event.mask);
+      entities = jsonQuery(this._getCellEventListeners, event.cell, mask);
     } else if (event.target) {
-      entities = jsonQuery(
-        this._getTargetEventListeners,
-        event.target,
-        event.mask,
-      );
+      entities = jsonQuery(this._getTargetEventListeners, event.target, mask);
     }
     if (!entities) {
       return [event, []];
@@ -490,14 +477,14 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     return [event, entities];
   }
 
-  setMapQueuePosition(map: number, qpos: number) {
+  setMapQueuePosition(map: MapId, qpos: number) {
     this._setMapQueuePosition.run(qpos, map);
   }
 
-  insertAreaEvent(event: WriteAreaEvent) {
+  insertAreaEvent<T extends EventType>(event: WriteAreaEvent<T>) {
     this._insertAreaEvent.run(
       event.type,
-      event.mask,
+      eventMasks[event.type],
       jsonStringOrNull(event.payload),
       event.map,
       event.center[0],
@@ -506,19 +493,19 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     );
   }
 
-  insertCellEvent(event: WriteCellEvent) {
+  insertCellEvent<T extends EventType>(event: WriteCellEvent<T>) {
     this._insertCellEvent.run(
       event.type,
-      event.mask,
+      eventMasks[event.type],
       jsonStringOrNull(event.payload),
       event.cell,
     );
   }
 
-  insertTargetEvent(event: WriteTargetEvent) {
+  insertTargetEvent<T extends EventType>(event: WriteTargetEvent<T>) {
     this._insertTargetEvent.run(
       event.type,
-      event.mask,
+      eventMasks[event.type],
       jsonStringOrNull(event.payload),
       event.target,
     );
@@ -531,7 +518,7 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     return jsonQuery(this._children, parent, type) || [];
   }
 
-  getMapSegment(map: number, from: vec2, to: vec2): MapSegment {
+  getMapSegment(map: MapId, from: ReadonlyVec2, to: ReadonlyVec2): MapSegment {
     const d = vec2.sub([0, 0], to, from);
     vec2.add(d, d, [1, 1]);
     const [height, width] = d;
@@ -552,11 +539,11 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     };
   }
 
-  insertMap(map: number) {
+  insertMap(map: MapId) {
     this._insertMap.run(map);
   }
 
-  insertMapSegment(map: number, start: vec2, segment: MapSegment) {
+  insertMapSegment(map: MapId, start: vec2, segment: MapSegment) {
     const { data, width } = segment;
     const height = data.length / width;
     const insertRow = this._db.prepare(
@@ -579,7 +566,7 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
   getEntity(id: EntityId) {
     const row = this._getEntity.get(id);
     if (!row) {
-      return undefined;
+      throw Error(`Entity ${id} not found`);
     }
     const found: ReadEntity[] = JSON.parse(row[0]);
     return found[0];
@@ -606,11 +593,11 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     return found?.[0];
   }
 
-  insertRootEntity(entity: WriteRootEntity) {
+  insertRootEntity<T extends EntityType>(entity: WriteRootEntity<T>) {
     return insert(
       this._insertRootEntity,
       entity.type,
-      entity.mask,
+      entityMasks[entity.type],
       jsonStringOrNull(entity.payload),
       entity.map,
       entity.position[0],
@@ -619,11 +606,11 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     );
   }
 
-  insertChildEntity(entity: WriteChildEntity) {
+  insertChildEntity<T extends EntityType>(entity: WriteChildEntity<T>) {
     return insert(
       this._insertChildEntity,
       entity.type,
-      entity.mask,
+      entityMasks[entity.type],
       jsonStringOrNull(entity.payload),
       entity.parent,
     );

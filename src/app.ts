@@ -1,22 +1,17 @@
 import type { DB, ReadEntity, ReadEvent, ReadRootEntity } from "./db.js";
-import type {
-  Connection,
-  Context,
-  EntityId,
-  EntityType,
-  EventType,
-} from "./types.js";
+import { Context, type Entity } from "./entity.js";
+import type { Connection, EntityId, EntityType, EventType } from "./types.js";
 
-type Handler = (this: DB, event: ReadEvent, entity: ReadEntity) => void;
+type Handler = (this: Context, event: ReadEvent, entity: Entity) => void;
 const eventHandlers = new Map<EventType, Map<EntityType, Handler[]>>();
 
 export function listen<TEvent extends EventType, TEntity extends EntityType>(
   events: TEvent[],
   entities: TEntity[],
   handler: (
-    this: DB,
+    this: Context,
     event: ReadEvent<TEvent>,
-    entity: ReadEntity<TEntity>,
+    entity: Entity<TEntity>,
   ) => void,
 ) {
   for (const event of events) {
@@ -38,8 +33,8 @@ export function listen<TEvent extends EventType, TEntity extends EntityType>(
 
 const connections = new Map<EntityId, Connection>();
 
-export function getConnection(entity: ReadEntity<"player_ctrl">) {
-  return connections.get(entity.id);
+export function getConnection(id: EntityId) {
+  return connections.get(id);
 }
 export function setConnection(id: EntityId, conn: Connection) {
   connections.set(id, conn);
@@ -52,6 +47,7 @@ function mainLoop(db: DB, map: number) {
   if (!next) {
     return false;
   }
+  const context = new Context(db, map);
   const [event, entities] = next;
   const entityMap = eventHandlers.get(event.type);
   if (entityMap) {
@@ -62,7 +58,7 @@ function mainLoop(db: DB, map: number) {
       }
       for (const handler of handlers) {
         try {
-          handler.call(db, event, entity);
+          handler.call(context, event, context.wrap(entity));
         } catch (e) {
           console.error(e);
         }
