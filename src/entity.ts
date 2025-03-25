@@ -17,9 +17,17 @@ import type {
   WriteChildEntity,
 } from "./db.js";
 
+type Const<T> = T extends string | number | boolean | null | undefined | bigint
+  ? T
+  : T extends [...infer U]
+    ? readonly [...U]
+    : {
+        readonly [P in keyof T]: Const<T[P]>;
+      };
+
 export abstract class Entity<T extends EntityType = EntityType> {
   declare readonly id: EntityId;
-  declare readonly payload: EntityPayloads[T];
+  declare readonly payload: Const<EntityPayloads[T]>;
   protected declare readonly _context: Context;
 
   protected db() {
@@ -46,19 +54,19 @@ export abstract class Entity<T extends EntityType = EntityType> {
 
   abstract getRoot(): RootEntity;
 
-  post<T extends EventType>(event: BaseEvent<T>) {
-    this.db().insertTargetEvent<T>(Object.assign(event, { target: this.id }));
+  post<T extends EventType>(type: T, payload: EventPayloads[T]) {
+    this.db().insertTargetEvent<T>({
+      type,
+      payload,
+      target: this.id,
+    });
     return this;
   }
 
-  create<T extends EntityType>(entity: BaseEntity<T>) {
-    const child: WriteChildEntity<T> = Object.assign(entity, {
-      parent: this.id,
-    });
-    const id = this.db().insertChildEntity<T>(child);
-    return this._context.wrapChild<T>(
-      Object.assign(child, { id }) as ReadChildEntity<T>,
-    );
+  create<T extends EntityType>(type: T, payload: EntityPayloads[T]) {
+    const child: WriteChildEntity<T> = { type, payload, parent: this.id };
+    const id = this.db().insertChildEntity(child);
+    return this._context.wrapChild(Object.assign(child, { id }));
   }
 
   destroy() {

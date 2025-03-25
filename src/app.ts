@@ -42,8 +42,8 @@ export function setConnection(id: EntityId, conn: Connection) {
 
 function tick(db: DB) {}
 
-function mainLoop(db: DB, map: number) {
-  const next = db.getNextEvent(map);
+export function mainLoop(db: DB, map: number) {
+  const next = db.readEventQueue(map);
   if (!next) {
     return false;
   }
@@ -65,5 +65,5 @@ function mainLoop(db: DB, map: number) {
       }
     }
   }
-  db.setMapQueuePosition(map, event.id);
+  return true;
 }

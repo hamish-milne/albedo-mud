@@ -22,19 +22,8 @@ test("create context", () => {
         Drive: { base: 0, fatigue: 0, damage: 0 },
       },
     })
-    .create({
-      type: "firearm",
-      payload: {
-        model: "edf_mp",
-      },
-    })
-    .create({
-      type: "ammo",
-      payload: {
-        caliber: "10mm",
-        count: 30,
-      },
-    });
+    .create("firearm", { model: "edf_mp" })
+    .create("ammo", { caliber: "10mm", count: 30 });
 
   expect(ammo.getRoot().payload).toMatchObject({
     Body: { base: 0, fatigue: 0, damage: 0 },

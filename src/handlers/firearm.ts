@@ -1,7 +1,7 @@
 import { vec2, type ReadonlyVec2 } from "gl-matrix";
 import { getConnection, listen } from "../app.js";
-import type { DB, ReadEvent, ReadRootEntity, WriteEvent } from "../db.js";
-import type { EntityId, Vec2 } from "../types.js";
+import type { WriteEvent } from "../db.js";
+import type { EntityId } from "../types.js";
 import { linecast, LinecastOptions } from "../tiles.js";
 import { RootEntity } from "../entity.js";
 
@@ -183,56 +183,92 @@ function getTargetRange(
   }
 }
 
-function cancel(
-  event: ReadEvent,
-  root: RootEntity,
-  reason: EventPayloads["action_cancel"]["reason"],
-) {
-  root.post({
-    type: "action_cancel",
-    payload: { event, reason },
-  });
+function rangeDice(range: Range) {
+  switch (range) {
+    case "C":
+      return 4;
+    case "S":
+      return 6;
+    case "M":
+      return 8;
+    case "L":
+      return 10;
+    case "X":
+      return 12;
+  }
 }
 
-function notify(
-  db: DB,
-  event: ReadEvent,
-  root: ReadRootEntity,
-  range: number,
-  center?: Vec2,
-) {
-  db.insertAreaEvent({
-    type: "notify",
-    payload: {
-      event,
-      root: root.id,
-    },
-    map: root.map,
-    center: center || root.position,
-    range,
-  });
+function coverDice(cover: 0 | 1 | 2 | 3) {
+  switch (cover) {
+    case 0:
+      return [];
+    case 1:
+      return [8];
+    case 2:
+      return [10];
+    case 3:
+      return [12];
+  }
+}
+
+function concealmentDice(concealment: 0 | 1 | 2 | 3 | 4) {
+  switch (concealment) {
+    case 0:
+      return [];
+    case 1:
+      return [8];
+    case 2:
+      return [10];
+    case 3:
+      return [12];
+    case 4:
+      return [12, 12];
+  }
+}
+
+function roll(dice: number[]): number[] {
+  return dice.map((d) => Math.floor(Math.random() * d) + 1);
 }
 
 function doWeaponAttack(
+  score: number[],
   range: Range,
   cover: 0 | 1 | 2 | 3,
   concealment: 0 | 1 | 2 | 3 | 4,
-) {}
+) {
+  const defenceDice = [
+    rangeDice(range),
+    ...coverDice(cover),
+    ...concealmentDice(concealment),
+  ];
+  const defenceRoll = roll(defenceDice);
+  const defenceScore = Math.max(...defenceRoll);
+  if (!score.some((x) => x > 1)) {
+    return "botch";
+  }
+  const hitScore = typeof score === "number" ? score : Math.max(...score);
+  if (hitScore === defenceScore) {
+    return "tie"; // todo: semi-auto expert
+  }
+}
 
 listen(["weapon_attack"], ["firearm"], function (event, entity) {
   const root = entity.getRoot();
   const model = FirearmModels[entity.payload.model];
   const attackTarget = this.byId(event.payload.target);
   if (!model || !(attackTarget instanceof RootEntity)) {
-    return cancel(event, root, "invalid");
+    root.post("action_cancel", { event, reason: "invalid" });
+    return;
   }
   const mag = entity.children("ammo")[0];
   if (!mag || mag.payload.count < 1) {
-    return cancel(event, root, "ammo");
+    root.post("action_cancel", { event, reason: "ammo" });
+    return;
   }
   const range = getTargetRange(root.position, model, attackTarget.position);
   if (!range) {
-    return cancel(event, root, "range");
+    root.post("action_cancel", { event, reason: "range" });
+    return;
   }
   const segment = this.getMapSegment(
     vec2.min(vec2.create(), root.position, attackTarget.position),
@@ -245,7 +281,8 @@ listen(["weapon_attack"], ["firearm"], function (event, entity) {
     LinecastOptions.IncludeEnd,
   );
   if (result.cover >= 4) {
-    return cancel(event, root, "los");
+    root.post("action_cancel", { event, reason: "los" });
+    return;
   }
   mag.patch({ count: mag.payload.count - 1 });
   root.ping(model.ranges.X, {

@@ -164,32 +164,26 @@ interface Read {
 
 type BaseEntityMap = {
   [T in EntityType]: {
-    type: T;
-    payload: EntityPayloads[T];
+    obj: {
+      type: T;
+      payload: EntityPayloads[T];
+    };
   };
 };
 
-export type BaseEntity<T extends EntityType> = BaseEntityMap[T];
+export type BaseEntity<T extends EntityType> = BaseEntityMap[T]["obj"];
 
-type Const<T> = T extends string | number | boolean | null | undefined | bigint
-  ? T
-  : T extends [...infer U]
-    ? readonly [...U]
-    : {
-        readonly [P in keyof T]: Const<T[P]>;
-      };
+export type ReadChildEntity<T extends EntityType = EntityType> = BaseEntity<T> &
+  Read &
+  Child;
 
-export type ReadChildEntity<T extends EntityType = EntityType> = Const<
-  BaseEntity<T> & Read & Child
->;
+export type ReadRootEntity<T extends EntityType = EntityType> = BaseEntity<T> &
+  Read &
+  Root;
 
-export type ReadRootEntity<T extends EntityType = EntityType> = Const<
-  BaseEntity<T> & Read & Root
->;
-
-export type ReadEntity<T extends EntityType = EntityType> = Const<
-  BaseEntity<T> & Read & (Root | Child)
->;
+export type ReadEntity<T extends EntityType = EntityType> = BaseEntity<T> &
+  Read &
+  (Root | Child);
 
 export type WriteChildEntity<T extends EntityType = EntityType> =
   BaseEntity<T> & Child;
@@ -233,25 +227,24 @@ type EventSelector = AreaEvent | CellEvent | TargetEvent;
 
 type BaseEventMap = {
   [T in EventType]: {
-    type: T;
-    payload: EventPayloads[T];
+    obj: {
+      type: T;
+      payload: EventPayloads[T];
+    };
+    args: [T, EventPayloads[T]];
   };
 };
 
-export type BaseEvent<T extends EventType> = BaseEventMap[T];
+export type BaseEvent<T extends EventType> = BaseEventMap[T]["obj"];
 
-type ReadAreaEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & AreaEvent & Read
->;
-type ReadCellEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & CellEvent & Read
->;
-type ReadTargetEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & TargetEvent & Read
->;
-export type ReadEvent<T extends EventType = EventType> = Const<
-  BaseEvent<T> & EventSelector & Read
->;
+export type EventArgs<T extends EventType> = BaseEventMap[T]["args"];
+
+type ReadAreaEvent<T extends EventType> = BaseEvent<T> & AreaEvent & Read;
+type ReadCellEvent<T extends EventType> = BaseEvent<T> & CellEvent & Read;
+type ReadTargetEvent<T extends EventType> = BaseEvent<T> & TargetEvent & Read;
+export type ReadEvent<T extends EventType = EventType> = BaseEvent<T> &
+  EventSelector &
+  Read;
 
 export type WriteAreaEvent<T extends EventType = EventType> = BaseEvent<T> &
   AreaEvent;
@@ -479,6 +472,16 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
 
   setMapQueuePosition(map: MapId, qpos: number) {
     this._setMapQueuePosition.run(qpos, map);
+  }
+
+  readEventQueue(map: MapId): [ReadEvent, ReadEntity[]] | undefined {
+    return this._db.transaction(() => {
+      const events = this.getNextEvent(map);
+      if (events) {
+        this.setMapQueuePosition(map, events[0].id);
+      }
+      return events;
+    })();
   }
 
   insertAreaEvent<T extends EventType>(event: WriteAreaEvent<T>) {

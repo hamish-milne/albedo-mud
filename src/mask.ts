@@ -10,7 +10,7 @@ export enum EventMask {
 }
 
 export const entityMasks: Record<EntityType, EventMask> = {
-  actor: EventMask.Tick,
+  actor: EventMask.Damage | EventMask.Usable,
   player_ctrl: EventMask.Listen | EventMask.See,
   grenade: EventMask.Usable | EventMask.Tick,
   firearm: EventMask.Usable,
