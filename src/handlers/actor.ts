@@ -168,7 +168,7 @@ function pointsToDice(skill: number, count: number) {
 export function resolveCheck(score: number[], dc: number) {
   const max = Math.max(...score);
   if (max > dc) {
-    if (!score.some((x) => x <= dc)) {
+    if (score.length > 1 && !score.some((x) => x <= dc)) {
       return "crit";
     }
     return "pass";
@@ -182,10 +182,12 @@ export function resolveCheck(score: number[], dc: number) {
   return "fail";
 }
 
+export type RollType = "rote" | "roll" | "push" | "risk" | "breeze";
+
 export function trySkillRoll(
   actor: Entity<"actor">,
   skill: Skill,
-  rollType: "rote" | "roll" | "push" | "risk" | "breeze",
+  rollType: RollType,
   stunt?: boolean,
   passive?: boolean,
 ) {

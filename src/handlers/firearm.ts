@@ -4,6 +4,7 @@ import type { WriteEvent } from "../db.js";
 import type { EntityId } from "../types.js";
 import { linecast, LinecastOptions } from "../tiles.js";
 import { RootEntity } from "../entity.js";
+import { resolveCheck, trySkillRoll, type RollType } from "./actor.js";
 
 const RangeNames = ["C", "S", "M", "L", "X"] as const;
 type Range = (typeof RangeNames)[number];
@@ -156,7 +157,8 @@ declare global {
   interface EventPayloads {
     weapon_attack: {
       target: EntityId;
-      score: number;
+      rollType: RollType;
+      // todo: 'user' property here? or always assume parent?
     };
     action_cancel: {
       event: WriteEvent;
@@ -241,15 +243,8 @@ function doWeaponAttack(
     ...coverDice(cover),
     ...concealmentDice(concealment),
   ];
-  const defenceRoll = roll(defenceDice);
-  const defenceScore = Math.max(...defenceRoll);
-  if (!score.some((x) => x > 1)) {
-    return "botch";
-  }
-  const hitScore = typeof score === "number" ? score : Math.max(...score);
-  if (hitScore === defenceScore) {
-    return "tie"; // todo: semi-auto expert
-  }
+  // todo: semi-auto expert
+  return resolveCheck(score, Math.max(...defenceDice));
 }
 
 listen(["weapon_attack"], ["firearm"], function (event, entity) {
@@ -274,21 +269,28 @@ listen(["weapon_attack"], ["firearm"], function (event, entity) {
     vec2.min(vec2.create(), root.position, attackTarget.position),
     vec2.max(vec2.create(), root.position, attackTarget.position),
   );
-  const result = linecast(
+  const castResult = linecast(
     segment,
     root.position,
     attackTarget.position,
     LinecastOptions.IncludeEnd,
   );
-  if (result.cover >= 4) {
+  if (castResult.cover === 4 || castResult.cover > 4) {
     root.post("action_cancel", { event, reason: "los" });
     return;
   }
+  const skillResult = trySkillRoll(root, model.skill, event.payload.rollType);
   mag.patch({ count: mag.payload.count - 1 });
   root.ping(model.ranges.X, {
     type: "notify",
     payload: { event, root: root.id },
   });
+  const atkResult = doWeaponAttack(
+    event.payload.score,
+    range,
+    castResult.cover,
+    castResult.concealment,
+  );
 });
 
 listen(["notify"], ["player_ctrl"], function (event, entity) {

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { DB } from "../db.js";
 import { Context } from "../entity.js";
-import { trySkillRoll } from "./actor.js";
+import { resolveCheck, trySkillRoll } from "./actor.js";
 import { mainLoop } from "../app.js";
 
 function setup(delta: Partial<EntityPayloads["actor"]>) {
@@ -27,7 +27,7 @@ test("skill roll", () => {
     computers: 8,
     persuade: 4,
   });
-  expect(trySkillRoll(actor, "longarms", "rote")).toEqual(4);
+  expect(trySkillRoll(actor, "longarms", "rote")).toEqual([4]);
   expect(trySkillRoll(actor, "longarms", "roll")).toEqual([8]);
   expect(trySkillRoll(actor, "longarms", "push")).toEqual([8, 8]);
   expect(trySkillRoll(actor, "longarms", "risk")).toEqual([10]);
@@ -58,4 +58,16 @@ test("skill roll", () => {
     Clout: { base: 0, fatigue: 0, damage: 0 },
     Drive: { base: 5, fatigue: 3, damage: 0 },
   });
+});
+
+test("check resolve", () => {
+  expect(resolveCheck([7], 4)).toBe("pass");
+  expect(resolveCheck([2], 8)).toBe("fail");
+  expect(resolveCheck([1], 2)).toBe("botch");
+  expect(resolveCheck([5], 5)).toBe("tie");
+  expect(resolveCheck([1, 4], 12)).toBe("fail");
+  expect(resolveCheck([7, 6], 5)).toBe("crit");
+  expect(resolveCheck([2, 7], 6)).toBe("pass");
+  expect(resolveCheck([1, 1], 3)).toBe("botch");
+  expect(resolveCheck([9, 9], 9)).toBe("tie");
 });
