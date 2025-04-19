@@ -10,7 +10,7 @@ import type {
 } from "./types.js";
 import { vec2, type ReadonlyVec2 } from "gl-matrix";
 import type { MapSegment } from "./tiles.js";
-import { entityMasks, eventMasks, type EventMask } from "./mask.js";
+import { entityMasks, EventMask, eventMasks } from "./mask.js";
 
 const init = `
 CREATE TABLE IF NOT EXISTS Event(
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS Event(
     range INTEGER,
     target INTEGER REFERENCES Entity ON DELETE CASCADE,
     cell INTEGER REFERENCES Cell ON DELETE CASCADE,
+    notify INTEGER,
     payload BLOB,
     map INTEGER GENERATED ALWAYS AS (center >> 32) VIRTUAL REFERENCES Map ON DELETE CASCADE,
     y INTEGER GENERATED ALWAYS AS ((center >> 16) & 0xFFFF) VIRTUAL,
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS Event(
         'payload', payload
     )) VIRTUAL,
     CONSTRAINT Area CHECK ((center IS NULL AND range IS NULL) OR (center IS NOT NULL AND range IS NOT NULL)),
-    CONSTRAINT ExactlyOneTarget CHECK ((if(center IS NULL, 0, 1) + if(target IS NULL, 0, 1) + if(cell IS NULL, 0, 1)) = 1)
+    CONSTRAINT ExactlyOneTarget CHECK ((if(center IS NULL, 0, 1) + if(target IS NULL, 0, 1) + if(cell IS NULL, 0, 1)) = 1),
+    CONSTRAINT CellCannotNotify CHECK (cell IS NULL OR notify IS NULL)
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS EventMapIndex ON Event (map);
@@ -205,6 +207,7 @@ interface AreaEvent {
   range: number;
   cell?: undefined;
   target?: undefined;
+  notify?: number;
 }
 
 interface CellEvent {
@@ -213,6 +216,7 @@ interface CellEvent {
   range?: undefined;
   cell: number;
   target?: undefined;
+  notify?: undefined;
 }
 
 interface TargetEvent {
@@ -221,6 +225,7 @@ interface TargetEvent {
   range?: undefined;
   cell?: undefined;
   target: EntityId;
+  notify?: number;
 }
 
 type EventSelector = AreaEvent | CellEvent | TargetEvent;
@@ -254,6 +259,12 @@ export type WriteTargetEvent<T extends EventType = EventType> = BaseEvent<T> &
   TargetEvent;
 export type WriteEvent<T extends EventType = EventType> = BaseEvent<T> &
   EventSelector;
+
+interface EventResponse {
+  event: ReadEvent;
+  targets: ReadEntity[];
+  listeners: ReadEntity[];
+}
 
 function createDb() {
   const db = new Database(":memory:");
@@ -444,13 +455,14 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     return makeTree(id);
   }
 
-  getNextEvent(map: MapId): [ReadEvent, ReadEntity[]] | undefined {
+  getNextEvent(map: MapId): EventResponse | undefined {
     const event: ReadEvent | undefined = jsonQuery(this._getNextEvent, map);
     if (!event) {
       return;
     }
     const mask = eventMasks[event.type];
     let entities: ReadEntity[] | undefined = undefined;
+    let notify: ReadEntity[] | undefined = undefined;
     if (event.center) {
       entities = jsonQuery(this._getAreaEventListeners, {
         map,
@@ -464,21 +476,39 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
     } else if (event.target) {
       entities = jsonQuery(this._getTargetEventListeners, event.target, mask);
     }
-    if (!entities) {
-      return [event, []];
+    if (event.notify) {
+      let params: [number, Vec2];
+      if (event.center) {
+        params = [event.map, event.center];
+      } else {
+        const root = this.getRootById(event.target);
+        params = [root.map, root.position];
+      }
+      const [map, center] = params;
+      notify = jsonQuery(this._getAreaEventListeners, {
+        map,
+        y: center[0],
+        x: center[1],
+        range: event.notify,
+        mask: EventMask.See | EventMask.Listen,
+      });
     }
-    return [event, entities];
+    return {
+      event,
+      targets: entities || [],
+      listeners: notify || [],
+    };
   }
 
   setMapQueuePosition(map: MapId, qpos: number) {
     this._setMapQueuePosition.run(qpos, map);
   }
 
-  readEventQueue(map: MapId): [ReadEvent, ReadEntity[]] | undefined {
+  readEventQueue(map: MapId): EventResponse | undefined {
     return this._db.transaction(() => {
       const events = this.getNextEvent(map);
       if (events) {
-        this.setMapQueuePosition(map, events[0].id);
+        this.setMapQueuePosition(map, events.event.id);
       }
       return events;
     })();
@@ -576,7 +606,10 @@ SELECT object FROM EventsWithMap JOIN Map ON Map.id=EventsWithMap.map AND Map.qp
   }
 
   getRootById(id: EntityId) {
-    const found: ReadRootEntity[] = jsonQuery(this._getRoot, id) || [];
+    const found: ReadRootEntity[] | undefined = jsonQuery(this._getRoot, id);
+    if (!found) {
+      throw new Error(`Entity ${id} has no root`);
+    }
     return found[0];
   }
 

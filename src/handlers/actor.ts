@@ -1,4 +1,4 @@
-import { listen, getConnection } from "../app.js";
+import { on, getConnection } from "../app.js";
 import type { Entity } from "../entity.js";
 
 export type Attribute = "Body" | "Drive" | "Clout";
@@ -253,7 +253,7 @@ export function trySkillRoll(
   return dice;
 }
 
-listen(["damage"], ["actor"], function (event, entity) {
+on(["damage"], ["actor"], function (event, entity) {
   const { attribute, amount } = event.payload;
   const { base, damage } = entity.payload[attribute];
   entity.patch({
@@ -263,7 +263,7 @@ listen(["damage"], ["actor"], function (event, entity) {
   });
 });
 
-listen(["fatigue"], ["actor"], function (event, entity) {
+on(["fatigue"], ["actor"], function (event, entity) {
   const { attribute, amount } = event.payload;
   const { base, damage, fatigue } = entity.payload[attribute];
   entity.patch({
@@ -273,7 +273,7 @@ listen(["fatigue"], ["actor"], function (event, entity) {
   });
 });
 
-listen(["damage", "fatigue"], ["player_ctrl"], function (event, entity) {
+on(["damage", "fatigue"], ["player_ctrl"], function (event, entity) {
   const conn = getConnection(entity.id);
   if (!conn) {
     return;

@@ -37,13 +37,13 @@ test("skill roll", () => {
   expect(trySkillRoll(actor, "climb", "push", true)).toEqual([10, 10]);
 
   for (let i = 0; i < 3; i++) {
-    expect(context._db.readEventQueue(1)?.[0]).toMatchObject({
+    expect(context._db.readEventQueue(1)?.event).toMatchObject({
       type: "fatigue",
       target: actor.id,
       payload: { attribute: "Drive", amount: 1 },
     });
   }
-  expect(context._db.readEventQueue(1)?.[0]).toMatchObject({
+  expect(context._db.readEventQueue(1)?.event).toMatchObject({
     type: "fatigue",
     target: actor.id,
     payload: { attribute: "Body", amount: 3 },

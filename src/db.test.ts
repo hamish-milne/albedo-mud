@@ -141,32 +141,34 @@ test("write/read events", () => {
     range: 1,
   } as const;
   db.insertAreaEvent(areaEvent);
-  const targetEvent = {
+  const singleEvent = {
     type: "weapon_attack",
     payload: {
-      score: 9,
+      rollType: "rote",
       target: 7,
     },
     target: id,
   } as const;
-  db.insertTargetEvent(targetEvent);
+  db.insertTargetEvent(singleEvent);
 
   const t1 = db.getNextEvent(1);
   if (!t1) {
     throw Error();
   }
-  const [event1, entities1] = t1;
-  expect(event1).toMatchObject(areaEvent);
-  expect(entities1).toMatchObject([actor1]);
-  db.setMapQueuePosition(1, event1.id);
+  expect(t1).toMatchObject({
+    event: areaEvent,
+    targets: [actor1],
+  });
+  db.setMapQueuePosition(1, t1.event.id);
 
   const t2 = db.getNextEvent(1);
   if (!t2) {
     throw Error();
   }
-  const [event2, entities2] = t2;
-  expect(event2).toMatchObject(targetEvent);
-  expect(entities2).toMatchObject([actor1]);
+  expect(t2).toMatchObject({
+    event: singleEvent,
+    targets: [actor1],
+  });
 });
 
 test("modify entity", () => {
